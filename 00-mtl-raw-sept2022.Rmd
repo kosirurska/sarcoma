@@ -1,0 +1,213 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(ggpubr)
+```
+
+
+```{r raw data}
+# Read in the raw MTL data set
+mtl_raw <- read_excel("data/mtl_raw_sept22.xlsx") %>%
+  select_all(tolower) %>%
+  rename_all(.funs = function(.x){
+    .x %>% str_replace_all(pattern = "\\s", replacement = "_") %>%
+      str_replace(pattern = "3m", replacement = "m3") %>%
+      str_replace(pattern = "6m", replacement = "m6") %>%
+      str_replace(pattern = "12m", replacement = "m12") %>%
+      str_replace(pattern = "24m", replacement = "m24") %>%
+      str_remove(pattern = "\\:|\\.")
+  }) %>%
+  rowwise() %>% 
+  dplyr::select(subject_id, dob, gender, procedure, area, contains("bl_"), contains("m12")) %>%
+  dplyr::select(subject_id, dob, gender, procedure, area,
+                bl_consent_date, bl_deceased, bl_date_deceased, bl_tumour_type, bl_prez_6, bl_date_assess,
+                bl_assess_complete, contains("bl_int"), contains("bl_lot"),
+                contains("bl_ioe"), contains("bl_qol"), contains("bl_facit"),
+                contains("tess"),
+                bl_msts_extremity, 
+                bl_msts_87_ue_motion, bl_msts_87_ue_pain, bl_msts_87_ue_stability, bl_msts_87_ue_deformity, bl_msts_87_ue_strength, bl_msts_87_ue_function, bl_msts_87_ue_acceptance, bl_msts_87_ue_score,
+                bl_msts_87_le_motion, bl_msts_87_le_pain, bl_msts_87_le_stability, bl_msts_87_le_deformity, bl_msts_87_le_strength, bl_msts_87_le_function, bl_msts_87_le_acceptance, bl_msts_87_le_score,
+                bl_soft_msts_extremity,
+                bl_soft_msts_87_ue_motion, bl_soft_msts_87_ue_pain, bl_soft_msts_87_ue_stability, bl_soft_msts_87_ue_deformity, bl_soft_msts_87_ue_strength, bl_soft_msts_87_ue_function, bl_soft_msts_87_ue_acceptance, bl_soft_msts_87_ue_score,
+                bl_soft_msts_87_le_motion, bl_soft_msts_87_le_pain, bl_soft_msts_87_le_stability, bl_soft_msts_87_le_deformity, bl_soft_msts_87_le_strength, bl_soft_msts_87_le_function, bl_soft_msts_87_le_acceptance, bl_soft_msts_87_le_score,
+                contains("m12_ff"), contains("m12_qol"), contains("m12_facit"),
+                contains("m12_os"), contains("m12_foe"),
+                m12_msts_87_ue_motion, m12_msts_87_ue_pain, m12_msts_87_ue_stability, m12_msts_87_ue_deformity, m12_msts_87_ue_strength, m12_msts_87_ue_function, m12_msts_87_ue_acceptance, m12_msts_87_ue_score,
+                m12_msts_87_le_motion, m12_msts_87_le_pain, m12_msts_87_le_stability, m12_msts_87_le_deformity, m12_msts_87_le_strength, m12_msts_87_le_function, m12_msts_87_le_acceptance, m12_msts_87_le_score,
+                m12_soft_msts_87_ue_motion, m12_soft_msts_87_ue_pain, m12_soft_msts_87_ue_stability, m12_soft_msts_87_ue_deformity, m12_soft_msts_87_ue_strength, m12_soft_msts_87_ue_function, m12_soft_msts_87_ue_acceptance, m12_soft_msts_87_ue_score,
+                m12_soft_msts_87_le_motion, m12_soft_msts_87_le_pain, m12_soft_msts_87_le_stability, m12_soft_msts_87_le_deformity, m12_soft_msts_87_le_strength, m12_soft_msts_87_le_function, m12_soft_msts_87_le_acceptance, m12_soft_msts_87_le_score
+                )
+
+# write_csv(mtl_raw, "data/mtl_raw_selected.csv")
+```
+
+# Start fresh to avoid re-running the cleaning
+```{r}
+mtl_raw_selected <- read_csv("data/mtl_raw_selected.csv") %>%
+  #dplyr::mutate_at(c("bl_qol_2", "bl_qol_4", "bl_qol_5", "bl_qol_6", "bl_qol_7"), as.numeric) %>%
+  dplyr::mutate(bl_le_motion = coalesce(bl_msts_87_le_motion, bl_soft_msts_87_le_motion),
+                bl_ue_motion = coalesce(bl_msts_87_ue_motion, bl_soft_msts_87_ue_motion),
+                bl_motion = coalesce(bl_le_motion, bl_ue_motion),
+                bl_le_pain = coalesce(bl_msts_87_le_pain, bl_soft_msts_87_le_pain),
+                bl_ue_pain = coalesce(bl_msts_87_ue_pain, bl_soft_msts_87_ue_pain),
+                bl_pain = coalesce(bl_le_pain, bl_ue_pain),
+                bl_le_function = coalesce(bl_msts_87_le_function, bl_soft_msts_87_le_function),
+                bl_ue_function = coalesce(bl_msts_87_ue_function, bl_soft_msts_87_ue_function),
+                bl_function = coalesce(bl_le_function, bl_ue_function),
+                bl_le_acceptance = coalesce(bl_msts_87_le_acceptance, bl_soft_msts_87_le_acceptance),
+                bl_ue_acceptance = coalesce(bl_msts_87_ue_acceptance, bl_soft_msts_87_ue_acceptance),
+                bl_acceptance = coalesce(bl_le_acceptance, bl_ue_acceptance),
+                bl_le_score = coalesce(bl_msts_87_le_score, bl_soft_msts_87_le_score),
+                bl_ue_score = coalesce(bl_msts_87_ue_score, bl_soft_msts_87_ue_score),
+                bl_score = coalesce(bl_le_score, bl_ue_score),
+                ###
+                m12_le_motion = coalesce(m12_msts_87_le_motion, m12_soft_msts_87_le_motion),
+                m12_ue_motion = coalesce(m12_msts_87_ue_motion, m12_soft_msts_87_ue_motion),
+                m12_motion = coalesce(m12_le_motion, m12_ue_motion),
+                m12_le_pain = coalesce(m12_msts_87_le_pain, m12_soft_msts_87_le_pain),
+                m12_ue_pain = coalesce(m12_msts_87_ue_pain, m12_soft_msts_87_ue_pain),
+                m12_pain = coalesce(m12_le_pain, m12_ue_pain),
+                m12_le_function = coalesce(m12_msts_87_le_function, m12_soft_msts_87_le_function),
+                m12_ue_function = coalesce(m12_msts_87_ue_function, m12_soft_msts_87_ue_function),
+                m12_function = coalesce(m12_le_function, m12_ue_function),
+                m12_le_acceptance = coalesce(m12_msts_87_le_acceptance, m12_soft_msts_87_le_acceptance),
+                m12_ue_acceptance = coalesce(m12_msts_87_ue_acceptance, m12_soft_msts_87_ue_acceptance),
+                m12_acceptance = coalesce(m12_le_acceptance, m12_ue_acceptance),
+                m12_le_score = coalesce(m12_msts_87_le_score, m12_soft_msts_87_le_score),
+                m12_ue_score = coalesce(m12_msts_87_ue_score, m12_soft_msts_87_ue_score),
+                m12_score = coalesce(m12_le_score, m12_ue_score)) %>%
+  # harmonize by grouping the MSTS scores from 5 to 3 levels
+  dplyr::mutate(bl_motion_harm = case_when(bl_motion == 0 | bl_motion == 1 | bl_motion == 2 ~ 1,
+                                           bl_motion == 3 | bl_motion == 4 ~ 2,
+                                           bl_motion == 5 ~ 3),
+                bl_pain_harm = case_when(bl_pain == 0 | bl_pain == 1 | bl_pain == 2 ~ 3,
+                                         bl_pain == 3 | bl_pain == 4 ~ 2,
+                                         bl_pain == 5 ~ 1),
+                bl_function_harm = case_when(bl_function == 0 | bl_function == 1 | bl_function == 2 ~ 3,
+                                             bl_function == 3 | bl_function == 4 ~ 2,
+                                             bl_function == 5 ~ 1),
+                bl_acceptance_harm = case_when(bl_acceptance == 0 | bl_acceptance == 1 | bl_acceptance == 2 ~ 3,
+                                               bl_acceptance == 3 | bl_acceptance == 4 ~ 2,
+                                               bl_acceptance == 5 ~ 1),
+                bl_agreement_pain = ifelse(bl_pain_harm==bl_qol_5, 1, 0),
+                bl_agreement_function = ifelse(bl_function_harm==bl_qol_4, 1, 0),
+                bl_level_agreement_pain = bl_qol_5-bl_pain_harm, 
+                bl_level_agreement_function = bl_qol_4-bl_function_harm,
+                bl_level_agreement_pain_dummy = case_when(bl_level_agreement_pain == 0 ~ "neutral",
+                                                       bl_level_agreement_pain < 0 ~ "MD higher",
+                                                       bl_level_agreement_pain > 0 ~ "MD lower"),
+                bl_level_agreement_function_dummy = case_when(bl_level_agreement_function == 0 ~ "neutral",
+                                                       bl_level_agreement_function < 0 ~ "MD higher",
+                                                       bl_level_agreement_function > 0 ~ "MD lower"),
+                ##
+                m12_motion_harm = case_when(m12_motion == 0 | m12_motion == 1 | m12_motion == 2 ~ 1,
+                                           m12_motion == 3 | m12_motion == 4 ~ 2,
+                                           m12_motion == 5 ~ 3),
+                m12_pain_harm = case_when(m12_pain == 0 | m12_pain == 1 | m12_pain == 2 ~ 3,
+                                         m12_pain == 3 | m12_pain == 4 ~ 2,
+                                         m12_pain == 5 ~ 1),
+                m12_function_harm = case_when(m12_function == 0 | m12_function == 1 | m12_function == 2 ~ 3,
+                                             m12_function == 3 | m12_function == 4 ~ 2,
+                                             m12_function == 5 ~ 1),
+                m12_acceptance_harm = case_when(m12_acceptance == 0 | m12_acceptance == 1 | m12_acceptance == 2 ~ 3,
+                                               m12_acceptance == 3 | m12_acceptance == 4 ~ 2,
+                                               m12_acceptance == 5 ~ 1),
+                m12_agreement_pain = ifelse(m12_pain_harm==m12_qol_5, 1, 0),
+                m12_agreement_function = ifelse(m12_function_harm==m12_qol_4, 1, 0),
+                m12_level_agreement_pain = m12_qol_5-m12_pain_harm, 
+                m12_level_agreement_function = m12_qol_4-m12_function_harm,
+                m12_level_agreement_pain_dummy = case_when(m12_level_agreement_pain == 0 ~ "neutral",
+                                                       m12_level_agreement_pain < 0 ~ "MD higher",
+                                                       m12_level_agreement_pain > 0 ~ "MD lower"),
+                m12_level_agreement_function_dummy = case_when(m12_level_agreement_function == 0 ~ "neutral",
+                                                       m12_level_agreement_function < 0 ~ "MD higher",
+                                                       m12_level_agreement_function > 0 ~ "MD lower"),
+                difference_agreement_pain = bl_level_agreement_pain - m12_level_agreement_pain) %>%
+  mutate(dob = ifelse(dob == "0000-00-00", NA, dob), #not sure this is necessary
+         bl_consent_date = ifelse(bl_consent_date == "0000-00-00", bl_date_assess, bl_consent_date)) %>%
+  rowwise() %>%
+  mutate(bl_facit_score = sum(c(bl_facit_4, bl_facit_5,bl_facit_6, 
+                                       bl_facit_7, bl_facit_8, bl_facit_9, 
+                                       bl_facit_10, bl_facit_11, bl_facit_12, 
+                                       bl_facit_13, bl_facit_14, bl_facit_15, bl_facit_16), na.rm = F),
+         m12_facit_score = sum(c(m12_facit_4, m12_facit_5, m12_facit_6, 
+                                        m12_facit_7, m12_facit_8, m12_facit_9, 
+                                        m12_facit_10, m12_facit_11, m12_facit_12, 
+                                        m12_facit_13, m12_facit_14, m12_facit_15, 
+                                        m12_facit_16), na.rm = F))
+
+## Fcukery to get the age out right
+mtl_raw_selected$dob <- as.Date.character(mtl_raw_selected$dob, "%d-%m-%Y") ## YAY THIS WORKS
+mtl_raw_selected$bl_consent_date <- as.Date.character(mtl_raw_selected$bl_consent_date, "%d-%m-%Y") ## YAY THIS WORKS
+
+mtl_raw_selected$dob1 <- as.Date(mtl_raw_selected$dob, "%Y-%m-%d") #need to reverse the format...
+mtl_raw_selected$bl_consent_date1 <- as.Date.character(mtl_raw_selected$bl_consent_date, "%Y-%m-%d")
+
+## Add age variabeles
+mtl_raw_selected <- mtl_raw_selected %>%
+  mutate(age_wk = difftime(bl_consent_date1, dob1, units = "weeks"),
+         age_y = as.numeric(age_wk/52))
+
+write_csv(mtl_raw_selected, "data/mtl_scored_nov2022.csv") #last update nov 11, added age variable
+```
+
+
+## Correlations
+```{r}
+
+ggscatter(mtl_raw_selected, x = "bl_level_agreement_pain", y = "m12_level_agreement_pain",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + 
+  stat_cor(method = "spearman", 
+           label.x = 2, label.y = 4,
+           p.accuracy = 0.001, r.accuracy = 0.01) +
+  geom_jitter()
+
+ggscatter(mtl_raw_selected, x = "bl_function_harm", y = "bl_qol_4",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + 
+  stat_cor(method = "spearman", 
+           label.x = 2, label.y = 4,
+           p.accuracy = 0.001, r.accuracy = 0.01) +
+  geom_jitter()
+
+
+mtl_raw_selected %>%
+  dplyr::select(bl_function_harm, bl_qol_4) %>%
+  pivot_longer(cols= c("bl_function_harm", "bl_qol_4"), 
+               names_to = "measure",
+               values_to = "score") %>%
+  ggplot(aes(x = score, group = measure, fill = measure)) + 
+  geom_density(adjust=1.5, alpha = 0.5)
+```
+
+
+## Regression tree
+```{r}
+library(rpart) #for fitting decision trees
+library(rpart.plot) #for plotting decision trees
+
+#build the initial tree
+tree <- rpart(bl_agreement_pain~bl_qol_7+gender+age_y, data=mtl_raw_selected, method = "class", control=rpart.control(cp=.02))
+
+#view results
+printcp(tree)
+rpart.plot(tree)
+
+
+
+```
+
+
