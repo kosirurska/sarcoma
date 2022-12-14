@@ -1,0 +1,278 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(ggpubr)
+library(patchwork)
+library(sjmisc)
+library(sjlabelled)
+```
+
+```{r}
+data <- read_csv("data/mtl_scored_nov2022.csv") 
+
+data_analysis <- data %>%
+  filter(gender %in% c("FEMALE", "MALE"))
+```
+
+# DESCRIBE function
+```{r}
+data_analysis %>%
+  dplyr::select(bl_agreement_function, bl_level_agreement_function, bl_level_agreement_function_dummy
+                # , m12_agreement_function, m12_level_agreement_function, m12_level_agreement_function_dummy
+                ) %>%
+  drop_na() %>%
+  group_by(bl_agreement_function) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = round((prop = n/sum*100),1))
+
+data_analysis %>%
+  dplyr::select(bl_agreement_function, bl_level_agreement_function, bl_level_agreement_function_dummy
+                # , m12_agreement_function, m12_level_agreement_function, m12_level_agreement_function_dummy
+                ) %>%
+  drop_na() %>%
+  group_by(bl_level_agreement_function_dummy) %>%
+  filter(bl_agreement_function == 0) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = round((prop = n/sum*100),1))
+  ggplot(aes(x = bl_level_agreement_function_dummy, y = prop, fill = bl_level_agreement_function_dummy)) +
+  geom_col()
+```
+# DESCRIBE pain
+```{r}
+data_analysis %>%
+  dplyr::select(bl_agreement_pain) %>%
+  drop_na() %>%
+  group_by(bl_agreement_pain) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = round((prop = n/sum*100),1))
+
+data_analysis %>%
+  dplyr::select(bl_agreement_pain, bl_level_agreement_pain, bl_level_agreement_pain_dummy
+                ) %>%
+  drop_na() %>%
+  group_by(bl_level_agreement_pain_dummy) %>%
+  filter(bl_agreement_pain == 0) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         prop = round((prop = n/sum*100),1))
+  ggplot(aes(x = bl_level_agreement_function_dummy, y = prop, fill = bl_level_agreement_function_dummy)) +
+  geom_col()
+```
+# Function agreement and outcomes
+```{r, fig.width=12, fig.height=6.5}
+FUN_A <-data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, m12_facit_score, m12_tess, contains("agreement")) %>%
+  drop_na(bl_level_agreement_function) %>%
+  ggplot(aes(x = factor(bl_level_agreement_function), y = bl_qol_7, fill = factor(bl_level_agreement_function)))+
+  geom_boxplot() +
+  labs(title = " ", 
+       y = "Baseline QoL",
+       x = "Level of agreement") + 
+  ylim(0, 100) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.y = element_line())
+
+FUN_B <- data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, m12_facit_score, bl_tess, contains("agreement")) %>%
+  drop_na(bl_level_agreement_function) %>%
+  ggplot(aes(x = factor(bl_level_agreement_function), y = bl_tess, fill = factor(bl_level_agreement_function)))+
+  geom_boxplot() +
+  labs(title = " ", 
+       y = "Baseline Function (TESS)",
+       x = "Level of agreement") + 
+  ylim(0, 100) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.y = element_line())
+
+FUN_C <- data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, bl_facit_score, bl_tess, contains("agreement")) %>%
+  drop_na(bl_level_agreement_function) %>%
+  ggplot(aes(x = factor(bl_level_agreement_function), y = bl_facit_score, fill = factor(bl_level_agreement_function)))+
+  geom_boxplot() +
+  labs(title = " ", 
+       y = "Baseline fatigue (FACIT)",
+       x = "Level of agreement") + 
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.y = element_line())
+
+FUN_A+FUN_B+FUN_C
+  ####
+data_analysis$agree <- as.factor(data_analysis$bl_level_agreement_function)
+data_analysis$agree <- relevel(data_analysis$agree, ref = "0")
+
+
+
+m_bl_qol <- lm(bl_qol_7 ~ agree,
+               data = data_analysis)
+summary(m_bl_qol)
+
+m_bl_tess <- lm(bl_tess ~ agree,
+               data = data_analysis)
+summary(m_bl_tess)
+
+m_bl_fatigue <- lm(bl_facit_score ~ agree,
+               data = data_analysis)
+summary(m_bl_fatigue)
+
+sjPlot::tab_model(m_bl_qol, m_bl_tess, m_bl_fatigue)
+```
+
+
+# Function agreement and outcomes
+```{r, fig.width=12, fig.height=6.5}
+PAIN_A <-data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, m12_facit_score, m12_tess, contains("agreement")) %>%
+  drop_na(bl_level_agreement_pain) %>%
+  ggplot(aes(x = factor(bl_level_agreement_pain), y = bl_qol_7, fill = factor(bl_level_agreement_pain)))+
+  geom_boxplot() +
+  labs(title = " ", 
+       y = "Baseline QoL",
+       x = "Level of agreement") + 
+  ylim(0, 100) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.y = element_line())
+
+PAIN_B <- data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, m12_facit_score, bl_tess, contains("agreement")) %>%
+  drop_na(bl_level_agreement_pain) %>%
+  ggplot(aes(x = factor(bl_level_agreement_pain), y = bl_tess, fill = factor(bl_level_agreement_pain)))+
+  geom_boxplot() +
+  labs(title = " ", 
+       y = "Baseline Function (TESS)",
+       x = "Level of agreement") + 
+  ylim(0, 100) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.y = element_line())
+
+PAIN_C <- data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, bl_facit_score, bl_tess, contains("agreement")) %>%
+  drop_na(bl_level_agreement_pain) %>%
+  ggplot(aes(x = factor(bl_level_agreement_pain), y = bl_facit_score, fill = factor(bl_level_agreement_pain)))+
+  geom_boxplot() +
+  labs(title = " ", 
+       y = "Baseline fatigue (FACIT)",
+       x = "Level of agreement") + 
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = 'bold'),
+        panel.grid.major.y = element_line())
+
+PAIN_A+PAIN_B+PAIN_C
+  ####
+data_analysis$agree_pain <- as.factor(data_analysis$bl_level_agreement_pain)
+data_analysis$agree_pain <- relevel(data_analysis$agree_pain, ref = "0")
+
+
+
+m_bl_qol_pain <- lm(bl_qol_7 ~ agree_pain,
+               data = data_analysis)
+summary(m_bl_qol_pain)
+
+m_bl_tess_pain <- lm(bl_tess ~ agree_pain,
+               data = data_analysis)
+summary(m_bl_tess_pain)
+
+m_bl_fatigue_pain <- lm(bl_facit_score ~ agree_pain,
+               data = data_analysis)
+summary(m_bl_fatigue_pain)
+
+sjPlot::tab_model(m_bl_qol_pain, m_bl_tess_pain, m_bl_fatigue_pain)
+```
+
+
+```{r, echo=FALSE}
+data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, m12_facit_score, m12_tess, contains("agreement")) %>%
+  # filter(age_y <40) %>%
+  drop_na(bl_level_agreement_function) %>%
+  ggplot(aes(x = factor(bl_level_agreement_function), y = bl_qol_7, fill = factor(bl_level_agreement_function)))+
+  geom_boxplot()
+
+data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, m12_facit_score, m12_tess, contains("agreement")) %>%
+  # filter(age_y <40) %>%
+  drop_na(bl_level_agreement_function_dummy) %>%
+  ggplot(aes(x = factor(bl_level_agreement_function_dummy), y = bl_qol_7, fill = factor(bl_level_agreement_function_dummy)))+
+  geom_boxplot()
+
+data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, m12_facit_score, m12_tess, contains("agreement")) %>%
+  # filter(age_y <40) %>%
+  ggplot(aes(x = factor(bl_qol_4), y = bl_qol_7, fill = factor(bl_qol_4)))+
+  geom_boxplot()
+
+a <- lm(m12_qol_7 ~ bl_level_agreement_pain_dummy,
+        data = data)
+summary(a)
+
+b <- lm(m12_qol_7 ~ bl_level_agreement_function_dummy,
+        data = data)
+summary(b)
+
+b2 <- lm(m12_qol_7 ~ bl_level_agreement_pain_dummy + bl_function + age_y + gender,
+        data = data)
+summary(b2)
+
+
+data_analysis$agree <- as.factor(data_analysis$bl_level_agreement_function)
+data_analysis$agree <- relevel(data_analysis$agree, ref = "0")
+
+data_analysis$m12_agree <- as.factor(data_analysis$m12_level_agreement_function)
+data_analysis$m12_agree <- relevel(data_analysis$m12_agree, ref = "0")
+
+c <- lm(m12_tess ~ agree + m12_agree + bl_function + bl_tess + age_y + gender,
+        data = data)
+summary(c)
+
+d <- lm(bl_tess ~ agree + age_y + gender,
+        data = data)
+summary(d)
+
+d <- lm(m12_qol_7 ~ agree + age_y + gender,
+        data = data_analysis)
+summary(d)
+
+d <- lm(m12_function ~ agree + bl_tess + age_y + gender,
+        data = data_analysis)
+summary(d)
+
+e <- lm(bl_qol_7 ~ agree + bl_function + age_y + gender,
+        data = data)
+summary(e)
+```
+
+```{r}
+
+data %>%
+  dplyr::select(age_y, bl_qol_7, bl_qol_4, m12_qol_7, m12_facit_score, m12_tess, contains("agreement")) %>%
+  # filter(age_y <40) %>%
+  drop_na(bl_level_agreement_function) %>%
+  ggplot(aes(x = factor(bl_level_agreement_function), y = bl_qol_7, fill = factor(bl_level_agreement_function)))+
+  geom_boxplot()
+```
+

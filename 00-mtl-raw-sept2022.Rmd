@@ -142,7 +142,13 @@ mtl_raw_selected <- read_csv("data/mtl_raw_selected.csv") %>%
                                         m12_facit_7, m12_facit_8, m12_facit_9, 
                                         m12_facit_10, m12_facit_11, m12_facit_12, 
                                         m12_facit_13, m12_facit_14, m12_facit_15, 
-                                        m12_facit_16), na.rm = F))
+                                        m12_facit_16), na.rm = F),
+         bl_le_tessscore_sc = (as.numeric(bl_le_tessscore)*100)/110, na.rm = T,
+         bl_ue_tessscore_sc = (as.numeric(bl_ue_tessscore)*100)/110, na.rm = T, 
+         bl_tess = coalesce(bl_le_tessscore_sc, bl_ue_tessscore_sc),
+         m12_le_tessscore_sc = (as.numeric(m12_le_tessscore)*100)/110, na.rm = T,
+         m12_ue_tessscore_sc = (as.numeric(m12_ue_tessscore)*100)/110, na.rm = T,
+         m12_tess = coalesce(m12_le_tessscore_sc, m12_ue_tessscore_sc))
 
 ## Fcukery to get the age out right
 mtl_raw_selected$dob <- as.Date.character(mtl_raw_selected$dob, "%d-%m-%Y") ## YAY THIS WORKS
@@ -157,13 +163,19 @@ mtl_raw_selected <- mtl_raw_selected %>%
          age_y = as.numeric(age_wk/52))
 
 write_csv(mtl_raw_selected, "data/mtl_scored_nov2022.csv") #last update nov 11, added age variable
+
+data %>%
+  dplyr::select(bl_qol_4, bl_function_harm) %>%
+  group_by(bl_qol_4, bl_function_harm) %>%
+  count()
+
 ```
 
 
 ## Correlations
 ```{r}
 
-ggscatter(mtl_raw_selected, x = "bl_level_agreement_pain", y = "m12_level_agreement_pain",
+ggscatter(mtl_raw_selected, x = "bl_level_agreement_pain", y = "bl_level_agreement_function",
    add = "reg.line",  # Add regressin line
    add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
    conf.int = TRUE # Add confidence interval
