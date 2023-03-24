@@ -1,0 +1,46 @@
+---
+title: "Descriptive"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(ggpubr)
+library(patchwork)
+library(sjmisc)
+library(sjlabelled)
+```
+
+```{r}
+data <- read_csv("data/mtl_scored_nov2022.csv") 
+
+data %>%
+  dplyr::select(bl_tumour_type) %>%
+  group_by(bl_tumour_type) %>%
+  count()
+
+data %>%
+  dplyr::select(bl_int_6) %>%
+  group_by(bl_int_6) %>%
+  count()
+
+data_analysis_change_agreement_function <- data %>%
+  dplyr::select(subject_id, bl_level_agreement_function, m12_level_agreement_function) %>%
+  pivot_longer(cols = c(bl_level_agreement_function, m12_level_agreement_function),
+               names_to = "time",
+               values_to = "score")
+    
+write_csv(data_analysis_change_agreement_function, "~/Desktop/change_agreement_function_mar24.csv")
+
+data_analysis_change_agreement_pain <- data %>%
+  dplyr::select(subject_id, bl_level_agreement_pain,m12_level_agreement_pain) %>%
+  pivot_longer(cols = c(bl_level_agreement_pain,m12_level_agreement_pain),
+               names_to = "time",
+               values_to = "score")
+    
+write_csv(data_analysis_change_agreement_pain, "~/Desktop/change_agreement_pain_mar24.csv")
+```
