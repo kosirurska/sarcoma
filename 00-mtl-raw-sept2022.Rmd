@@ -26,13 +26,13 @@ mtl_raw <- read_excel("data/mtl_raw_sept22.xlsx") %>%
       str_remove(pattern = "\\:|\\.")
   }) %>%
   rowwise() %>% 
-  dplyr::select(subject_id, dob, gender, procedure, area, contains("bl_"), contains("m12")) %>%
+  dplyr::select(subject_id, dob, gender, procedure, area, contains("clin"), contains("bl_"), contains("m12")) %>%
   dplyr::select(subject_id, dob, gender, procedure, area,
                 bl_consent_date, bl_deceased, bl_date_deceased, bl_tumour_type, bl_prez_6, bl_date_assess,
                 bl_assess_complete, contains("bl_int"), contains("bl_lot"),
                 contains("bl_ioe"), contains("bl_qol"), contains("bl_facit"),
-                contains("tess"),
-                bl_msts_extremity, 
+                contains("tess"), contains("path"), contains("bl_prez"),
+                bl_msts_extremity,
                 bl_msts_87_ue_motion, bl_msts_87_ue_pain, bl_msts_87_ue_stability, bl_msts_87_ue_deformity, bl_msts_87_ue_strength, bl_msts_87_ue_function, bl_msts_87_ue_acceptance, bl_msts_87_ue_score,
                 bl_msts_87_le_motion, bl_msts_87_le_pain, bl_msts_87_le_stability, bl_msts_87_le_deformity, bl_msts_87_le_strength, bl_msts_87_le_function, bl_msts_87_le_acceptance, bl_msts_87_le_score,
                 bl_soft_msts_extremity,
@@ -46,7 +46,7 @@ mtl_raw <- read_excel("data/mtl_raw_sept22.xlsx") %>%
                 m12_soft_msts_87_le_motion, m12_soft_msts_87_le_pain, m12_soft_msts_87_le_stability, m12_soft_msts_87_le_deformity, m12_soft_msts_87_le_strength, m12_soft_msts_87_le_function, m12_soft_msts_87_le_acceptance, m12_soft_msts_87_le_score
                 )
 
-# write_csv(mtl_raw, "data/mtl_raw_selected.csv")
+write_csv(mtl_raw, "data/mtl_raw_selected.csv")
 ```
 
 # Start fresh to avoid re-running the cleaning
@@ -134,7 +134,9 @@ mtl_raw_selected <- read_csv("data/mtl_raw_selected.csv") %>%
   mutate(dob = ifelse(dob == "0000-00-00", NA, dob), #not sure this is necessary
          bl_consent_date = ifelse(bl_consent_date == "0000-00-00", bl_date_assess, bl_consent_date)) %>%
   rowwise() %>%
-  mutate(bl_facit_score = sum(c(bl_facit_4, bl_facit_5,bl_facit_6, 
+  mutate(bl_optimism = sum(c(bl_lot_1, bl_lot_5, bl_lot_11), na.rm = F),
+         bl_pessimism = sum(c(bl_lot_3, bl_lot_8, bl_lot_12), na.rm = F),
+         bl_facit_score = sum(c(bl_facit_4, bl_facit_5,bl_facit_6, 
                                        bl_facit_7, bl_facit_8, bl_facit_9, 
                                        bl_facit_10, bl_facit_11, bl_facit_12, 
                                        bl_facit_13, bl_facit_14, bl_facit_15, bl_facit_16), na.rm = F),
@@ -148,7 +150,18 @@ mtl_raw_selected <- read_csv("data/mtl_raw_selected.csv") %>%
          bl_tess = coalesce(bl_le_tessscore_sc, bl_ue_tessscore_sc),
          m12_le_tessscore_sc = (as.numeric(m12_le_tessscore)*100)/110, na.rm = T,
          m12_ue_tessscore_sc = (as.numeric(m12_ue_tessscore)*100)/110, na.rm = T,
-         m12_tess = coalesce(m12_le_tessscore_sc, m12_ue_tessscore_sc))
+         m12_tess = coalesce(m12_le_tessscore_sc, m12_ue_tessscore_sc),
+         bl_ioe_recover_time = as.numeric(case_when(bl_ioe_2 == 1 ~ 1,
+                                                           bl_ioe_2 == 2 | bl_ioe_2 == 3 | bl_ioe_2 == 4 ~ 2,
+                                                           bl_ioe_2 == 5 ~ 3,
+                                                           bl_ioe_2 == 6 ~ 4)),
+                bl_ioe_complication = as.numeric(case_when(bl_ioe_3 == 1 ~ 1,
+                                                           bl_ioe_3 == 2 ~ 3,
+                                                           bl_ioe_3 == 4 ~ 4)),
+                bl_ioe_recover_difficulty = as.numeric(case_when(bl_ioe_4 == 1 ~ 1,
+                                                                 bl_ioe_4 == 2 ~ 2,
+                                                                 bl_ioe_4 == 3 ~ 3,
+                                                                 bl_ioe_4 == 4 ~ 4)))
 
 ## Fcukery to get the age out right
 mtl_raw_selected$dob <- as.Date.character(mtl_raw_selected$dob, "%d-%m-%Y") ## YAY THIS WORKS
@@ -162,19 +175,14 @@ mtl_raw_selected <- mtl_raw_selected %>%
   mutate(age_wk = difftime(bl_consent_date1, dob1, units = "weeks"),
          age_y = as.numeric(age_wk/52))
 
-write_csv(mtl_raw_selected, "data/mtl_scored_nov2022.csv") #last update nov 11, added age variable
-
-data %>%
-  dplyr::select(bl_qol_4, bl_function_harm) %>%
-  group_by(bl_qol_4, bl_function_harm) %>%
-  count()
-
+write_csv(mtl_raw_selected, "data/mtl_scored_apr2023.csv") 
+# update apr 13, added optimism, and out expectations, tumor grade added, tumor size is needed next
+# update nov 11, added age variable
 ```
 
 
 ## Correlations
 ```{r}
-
 ggscatter(mtl_raw_selected, x = "bl_level_agreement_pain", y = "bl_level_agreement_function",
    add = "reg.line",  # Add regressin line
    add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
