@@ -19,6 +19,9 @@ library(sjlabelled)
 library(tableone)
 library(stringr)
 library(kableExtra)
+library(nlme)
+library(lme4)
+library(gamlj)
 
 # NOTES
 # bl_int_4 = Education levels (re-coded for ease)
@@ -95,6 +98,8 @@ data <- read_csv("data/mtl_scored_apr2023.csv") %>%
 
 -   Only cases diagnosed at age 16 or later are included (consent)
 -   clin_path_8 = tumor grade
+-   tumor type = 1 Soft tissue, 2 Bone
+-   bl_deceased = passed before surgical intervention
 
 ### Variables
 
@@ -132,7 +137,24 @@ once you recover from the treatment for your arm or leg problem?**
 
 4 = I don\`t know what to expect
 
-## Table for differences in agreement on function based on demographic and medical factors
+## SAMPLE
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+var_sample <- c("gender", "age_y", "bl_tumour_type", "tumor_location", "clin_path_8", "marital", "education", "ethnicity", "bl_deceased", "bl_optimism", "bl_pessimism", "bl_tess", "bl_facit_score", "bl_qol_7", "bl_ioe_recover_time", "bl_ioe_complication", "bl_ioe_recover_difficulty")
+
+# Determine which variables are categorical
+cat_vars_sample <- c("gender", "bl_tumour_type", "tumor_location", "clin_path_8","marital", "education", "ethnicity", "bl_deceased", "bl_ioe_recover_time", "bl_ioe_complication", "bl_ioe_recover_difficulty")
+
+#All cases table
+table_sample <- CreateTableOne(vars = var_sample, 
+                          factorVars = cat_vars_sample,
+                          data = data)
+table_sample
+```
+
+### Analyses
+
+#### Table for differences in agreement on function based on demographic and medical factors
 
 AGREEMENT on Function
 
@@ -145,7 +167,6 @@ invasive cancer), with better baseline function, fatigue, QOL, and
 patient's expectations about the time it would take them to recover (a
 larger proportion of those who agreed with doctor expected to recover in
 no time).
-
 ```{r echo=FALSE}
 univariate <- data %>%
   dplyr::select(subject_id, gender, 
@@ -176,7 +197,7 @@ table_1 <- CreateTableOne(vars = var_list_1,
 table_1
 ```
 
-## Table for differences in agreement on pain based on demographic and medical factors
+#### Table for differences in agreement on pain based on demographic and medical factors
 
 AGREEMENT on Pain
 
@@ -204,7 +225,7 @@ table_2 <- CreateTableOne(vars = var_list_2,
 table_2
 ```
 
-## AGREEMENT OVER TIME (univariate analyses, descriptives)
+### AGREEMENT OVER TIME (univariate analyses, descriptives)
 
 ```{r echo=FALSE}
 data_analysis_change_agreement_function <- data %>%
@@ -322,4 +343,162 @@ table_4 <- CreateTableOne(vars = var_list_4,
                           data = univariate,
                           strata = c("change_pain"))
 table_4
+```
+
+## Outcomes over time based on agreement on function
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=11}
+data_over_time <- data %>%
+  dplyr::select(subject_id, age_y, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_tess, m12_tess, bl_qol_7, m12_qol_7, bl_facit_score, m12_facit_score) %>%
+  drop_na(bl_agreement_function) %>%
+  pivot_longer(cols = c(bl_tess, m12_tess, bl_qol_7, m12_qol_7, bl_facit_score, m12_facit_score),
+               names_to = c("time", "measure"),
+               names_sep = "_",
+               values_to = "score")
+
+
+data_over_time %>% 
+  ggplot(aes(x = time, y = score)) +
+  geom_boxplot(aes(fill = factor(bl_level_agreement_function))) +
+  facet_grid(~measure)
+
+data_over_time %>%
+  ggplot(aes(x = time, y = score)) +
+  geom_boxplot(aes(fill = factor(bl_agreement_function))) +
+  facet_grid(~measure)
+```
+
+## Outcomes over time based on agreement on pain
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=11}
+data_over_time <- data %>%
+  dplyr::select(subject_id, age_y, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_tess, m12_tess, bl_qol_7, m12_qol_7, bl_facit_score, m12_facit_score) %>%
+  drop_na(bl_agreement_function) %>%
+  pivot_longer(cols = c(bl_tess, m12_tess, bl_qol_7, m12_qol_7, bl_facit_score, m12_facit_score),
+               names_to = c("time", "measure"),
+               names_sep = "_",
+               values_to = "score")
+
+data_over_time %>% 
+  drop_na(bl_level_agreement_pain) %>%
+  ggplot(aes(x = time, y = score)) +
+  geom_boxplot(aes(fill = factor(bl_level_agreement_pain))) +
+  facet_grid(~measure)
+
+data_over_time %>% 
+  drop_na(bl_agreement_pain) %>%
+  ggplot(aes(x = time, y = score)) +
+  geom_boxplot(aes(fill = factor(bl_agreement_pain))) +
+  facet_grid(~measure)
+```
+
+## UNIVARIATE: OUTCOME = TESS
+### based on agreement on function
+```{r echo=FALSE}
+data_mixed_change_tess <- data %>%
+  dplyr::select(subject_id, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_level_agreement_function_dummy, bl_level_agreement_pain_dummy, bl_tess, m12_tess) %>%
+  pivot_longer(cols = c(bl_tess, m12_tess),
+               names_to = "time",
+               values_to = "score") %>%
+  mutate(subject_id = as.numeric(subject_id),
+         time = as.factor(time),
+         bl_level_agreement_function_dummy = as.factor(bl_level_agreement_function_dummy),
+         bl_agreement_function = as.factor(case_when(bl_agreement_function == 0 ~ "disagree", 
+                                                     bl_agreement_function == 1 ~ "agree")),
+         bl_agreement_pain = as.factor(case_when(bl_agreement_pain == 0 ~ "disagree",
+                                                 bl_agreement_pain == 1 ~ "agree")))
+    
+# write_csv(data_mixed_change_tess, "~/Desktop/data_mixed_change_tess.csv")
+
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_agreement_function + time:bl_agreement_function+( 1 | subject_id ),
+    data = data_mixed_change_tess,
+    plotHAxis = time,
+    plotSepLines = bl_agreement_function,
+    plotError = "ci")
+```
+
+### What about agreement as 3-factor
+```{r echo=FALSE}
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_level_agreement_function_dummy + time:bl_level_agreement_function_dummy+( 1 | subject_id ),
+    data = data_mixed_change_tess,
+    plotHAxis = time,
+    plotSepLines = bl_level_agreement_function_dummy,
+    plotError = "ci")
+```
+
+
+### based on agreement on pain
+```{r echo=FALSE}
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_agreement_pain + time:bl_agreement_pain+( 1 | subject_id ),
+    data = data_mixed_change_tess,
+    plotHAxis = time,
+    plotSepLines = bl_agreement_pain,
+    plotError = "ci")
+```
+
+## UNIVARIATE: OUTCOME = Quality of Life
+### based on agreement on function
+```{r echo=FALSE}
+data_mixed_change_qol <- data %>%
+  dplyr::select(subject_id, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_level_agreement_function_dummy, bl_level_agreement_pain_dummy, bl_qol_7, m12_qol_7) %>%
+  pivot_longer(cols = c(bl_qol_7, m12_qol_7),
+               names_to = "time",
+               values_to = "score") %>%
+  mutate(subject_id = as.numeric(subject_id),
+         time = as.factor(time),
+         bl_level_agreement_function_dummy = as.factor(bl_level_agreement_function_dummy),
+         bl_agreement_function = as.factor(case_when(bl_agreement_function == 0 ~ "disagree", 
+                                                     bl_agreement_function == 1 ~ "agree")),
+         bl_agreement_pain = as.factor(case_when(bl_agreement_pain == 0 ~ "disagree",
+                                                 bl_agreement_pain == 1 ~ "agree")))
+    
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_level_agreement_function_dummy + time:bl_level_agreement_function_dummy + ( 1 | subject_id ),
+    data = data_mixed_change_qol,
+    plotHAxis = time,
+    plotSepLines = bl_level_agreement_function_dummy,
+    plotError = "ci")
+```
+
+### based on agreement on pain
+```{r echo=FALSE}
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_agreement_pain + time:bl_agreement_pain+( 1 | subject_id ),
+    data = data_mixed_change_qol,
+    plotHAxis = time,
+    plotSepLines = bl_agreement_pain,
+    plotError = "ci")
+```
+
+## UNIVARIATE: OUTCOME = FATIGUE
+### based on agreement on function
+```{r echo=FALSE}
+data_mixed_change_facit <- data %>%
+  dplyr::select(subject_id, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_level_agreement_function_dummy, bl_level_agreement_pain_dummy, bl_facit_score, m12_facit_score) %>%
+  pivot_longer(cols = c(bl_facit_score, m12_facit_score),
+               names_to = "time",
+               values_to = "score") %>%
+  mutate(subject_id = as.numeric(subject_id),
+         time = as.factor(time),
+         bl_agreement_function = as.factor(case_when(bl_agreement_function == 0 ~ "disagree", 
+                                                     bl_agreement_function == 1 ~ "agree")),
+         bl_agreement_pain = as.factor(case_when(bl_agreement_pain == 0 ~ "disagree",
+                                                 bl_agreement_pain == 1 ~ "agree")))
+    
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_agreement_function + time:bl_agreement_function+( 1 | subject_id ),
+    data = data_mixed_change_facit,
+    plotHAxis = time,
+    plotSepLines = bl_agreement_function,
+    plotError = "ci")
+```
+### based on agreement on pain
+```{r echo=FALSE}
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_agreement_pain + time:bl_agreement_pain+( 1 | subject_id ),
+    data = data_mixed_change_facit,
+    plotHAxis = time,
+    plotSepLines = bl_agreement_pain,
+    plotError = "ci")
 ```
