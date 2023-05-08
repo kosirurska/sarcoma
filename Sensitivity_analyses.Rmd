@@ -1,0 +1,151 @@
+---
+title: "Sensitivity analyses"
+output: pdf_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, echo = FALSE, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(ggpubr)
+library(patchwork)
+library(sjmisc)
+library(sjlabelled)
+library(tableone)
+library(stringr)
+library(kableExtra)
+library(nlme)
+library(lme4)
+library(gamlj)
+```
+
+```{r echo=FALSE, message=FALSE}
+data <- read_csv("data/mtl_scored_apr2023.csv") %>%
+  filter(gender %in% c("FEMALE", "MALE")) %>%
+  filter(age_y > 15) %>%
+  mutate(bl_int_6 = str_replace(bl_int_6, "\\;", ""),
+         bl_int_4 = factor(case_when(bl_int_4 == 1 ~ 1,
+                                     bl_int_4 == 2 ~ 2,
+                                     bl_int_4 == 3 | bl_int_4 == 4 | bl_int_4 == 5 | bl_int_4 == 6 | bl_int_4 == 7 | bl_int_4 == 8 ~ 3,
+                                     bl_int_4 == 9 | bl_int_4 == 10 | bl_int_4 == 11 ~ 4,
+                                     bl_int_4 == 12 | bl_int_4 == 13 ~ 5,
+                                     bl_int_4 == 14 ~ 6)),
+         education = case_when(bl_int_4 == "1" ~ "No education",
+                               bl_int_4 == "2" ~ "Primary",
+                               bl_int_4 == "3" ~ "Secondary",
+                               bl_int_4 == "4" ~ "University",
+                               bl_int_4 == "5" ~ "Grad school",
+                               bl_int_4 == "6" ~ "Other"),
+         education_num = as.numeric(bl_int_4),
+         bl_int_6 = factor(case_when(bl_int_6 == 12 ~ 1,
+                                     bl_int_6 == 3 | bl_int_6 == 4 | bl_int_6 == 8 ~ 2,
+                                     bl_int_6 == 5 | bl_int_6 == 6 | bl_int_6 == 9 |
+                                       bl_int_6 == 10 | bl_int_6 == 13 |bl_int_6 == 14 |
+                                       bl_int_6 == 15 ~ 3,
+                                     bl_int_6 == 7 ~ 4,
+                                     bl_int_6 == 1 | bl_int_6 == 11 ~ 5,
+                                     bl_int_6 == 2 | bl_int_6 > 15 ~ 6)),
+         ethnicity = case_when(bl_int_6 == "1" ~ "Caucasian/White",
+                               bl_int_6 == "2" ~ "Black/Carribbean/African",
+                               bl_int_6 == "3" ~ "Asian",
+                               bl_int_6 == "4" ~ "Hispanic",
+                               bl_int_6 == "5" ~ "Native",
+                               bl_int_6 == "6" ~ "Other/Multiple"),
+         marital = case_when(bl_int_2 == 1 ~ "Single",
+                             bl_int_2 == 2 ~ "Married/Cohabiting",
+                             bl_int_2 == 3 ~ "Separated/Divorced",
+                             bl_int_2 == 4 ~ "Widowed"),
+         bl_deceased = case_when(bl_deceased == "No" ~ "No",
+                                 bl_deceased == "Unknown" ~ "No",
+                                 bl_deceased == "Yes" ~ "Yes"),
+         tumor_location = case_when(bl_le_tessscore_sc >= 0 ~ "lower",
+                              bl_ue_tessscore_sc >= 0 ~ "upper"),
+         tumor_grade = case_when(clin_path_8 == "0" ~ 0,
+                                 clin_path_8 == "1" ~ 1,
+                                 clin_path_8 == "2" ~ 2,
+                                 clin_path_8 == "3" ~ 3,
+                                 clin_path_8 == "4" ~ 4,
+                                 clin_path_8 == "Unknown" ~ as.numeric(NA))) %>%
+  mutate(change_function = ifelse(bl_agreement_function == m12_agreement_function, "No change", "Change"),
+         change_pain = ifelse(bl_agreement_pain == m12_agreement_pain, "No change", "Change")) %>%
+  mutate(change_function_direction = case_when(bl_level_agreement_function_dummy == m12_level_agreement_function_dummy ~ "No change",
+                                               (bl_level_agreement_function_dummy == "MD higher" | bl_level_agreement_function_dummy == "MD lower") & m12_level_agreement_function_dummy == "neutral" ~ "Improved",
+                                               bl_level_agreement_function_dummy == "neutral" & (m12_level_agreement_function_dummy == "MD lower" | m12_level_agreement_function_dummy == "MD higher") ~ "Worsened"),
+         change_pain_direction = case_when(bl_level_agreement_pain_dummy == m12_level_agreement_pain_dummy ~ "No change",
+                                               (bl_level_agreement_pain_dummy == "MD higher" | bl_level_agreement_pain_dummy == "MD lower") & m12_level_agreement_pain_dummy == "neutral" ~ "Improved",
+                                               bl_level_agreement_pain_dummy == "neutral" & (m12_level_agreement_pain_dummy == "MD lower" | m12_level_agreement_pain_dummy == "MD higher") ~ "Worsened"))
+
+```
+
+## SAMPLE comparison at BL and 12M
+
+The table below stratifies the data in the analyses by cases who have 1) baseline assessment only, 2) 12-month assessment only, and 3) both. The main outcomes of interest and demographic factors are considered and compared. No significant differences are observed. *NOTE*: Individuals deceased at baseline were not included in the analyses.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+data_sample_missing <- data %>%
+  # filter(!is.na(bl_assess_complete)) %>%
+  filter(bl_deceased != "Yes") %>%
+  # dplyr::select(subject_id, bl_assess_complete, bl_tess, bl_qol_7, bl_facit_score,
+  #               m12_tess, m12_qol_7, m12_facit_score) %>%
+  mutate(missing_bl = case_when(bl_tess != 0 | bl_facit_score != 0 | bl_qol_7 != 0 ~ "BL"),
+         missing_m12 = case_when(m12_tess != 0 | m12_facit_score != 0 | m12_qol_7 != 0 ~ "12M"),
+         missing = case_when(missing_bl == "BL" & missing_m12 == "12M" ~ "both",
+                             missing_bl == "BL" ~ "BL",
+                             missing_m12 == "12M" ~ "12M"))
+
+var_sample_missing <- c("gender", "age_y", "bl_tumour_type", "tumor_location", "tumor_grade", "marital", "education", "ethnicity", "bl_tess", "bl_facit_score", "bl_qol_7", "m12_tess", "m12_facit_score", "m12_qol_7")
+
+# Determine which variables are categorical
+cat_vars_sample_missing <- c("gender", "bl_tumour_type", "tumor_location", "tumor_grade","marital", "education", "ethnicity")
+
+#All cases table
+table_sample_missing <- CreateTableOne(vars = var_sample_missing, 
+                          factorVars = cat_vars_sample_missing,
+                          data = data_sample_missing,
+                          strata = c("missing"))
+table_sample_missing
+```
+
+# Chronbach Alpha
+
+Cronbach $\alpha$ was calculated for baseline FACIT and TESS.
+
+FACIT $\alpha$ = 0.82
+
+
+TESS Upper extremity $\alpha$ = 0.98
+
+
+TESS Lower extremity $\alpha$ = 0.98
+
+
+
+```{r echo=TRUE, message=FALSE, results=FALSE, warning=FALSE}
+library(psych)
+
+data_facit_a <- data %>%
+  dplyr::select(bl_facit_1:bl_facit_16)
+
+psych::alpha(data_facit_a)
+
+data_tess_ue_a <- data %>%
+  dplyr::select(bl_ue_ue_tess_1:bl_ue_ue_tess_29) %>%
+  mutate(across(where(is.character), ~na_if(., "N/A"))) %>%
+  mutate_if(is.character,as.numeric)
+
+psych::alpha(data_tess_ue_a)
+
+data_tess_le_a <- data %>%
+  dplyr::select(bl_le_le_tess_1:bl_le_le_tess_30) %>%
+  mutate(across(where(is.character), ~na_if(., "N/A"))) %>%
+  mutate_if(is.character,as.numeric)
+
+psych::alpha(data_tess_le_a)
+```
+
+
