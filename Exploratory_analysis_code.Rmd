@@ -1,0 +1,638 @@
+---
+title: "Descriptive and univariate analyses"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, echo = FALSE, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(ggpubr)
+library(patchwork)
+library(sjmisc)
+library(sjlabelled)
+library(tableone)
+library(stringr)
+library(kableExtra)
+library(nlme)
+library(lme4)
+library(gamlj)
+
+# NOTES
+# bl_int_4 = Education levels (re-coded for ease)
+# 1 = no education, 2 = primary, 3 = secondary, 4 = university, 5 = grad school, 6 = other
+
+# bl_int_2 = Marital status
+## 1 = Single; 2 = Married/living with partner; 3 = Separated or divorced; 4 = Widow or widower
+
+# bl_int_6 = Ethnicity
+# Aboriginal - 1, Arab - 2, African - 3, Black - 4, Chinese - 5, Filipino - 6, Hispanic - 7, Jamaican - 8, Japanese - 9, Korean - 10, Metis - 11, White - 12, West Asian (Iranian, Afghan, etc.) - 13, Southeast Asian (Vietnamese, Cambodian, etc.) - 14, South Asian (Sri Lankan, East Indian, etc.) - 15, Other: - 16, Refused - 17, Don`t know - 18
+
+# 1 = White/Caucasian = 12
+# 2 = Black, Caribbean, African = 3, 4, 8 
+# 3 = Asian = 5, 6, 9, 10, 13, 14, 15
+# 4 = Hispanic = 7
+# 5 = Native = 1, 11
+# 6 = Other/multi = 2, 16, 17, 18 or >18
+
+# bl_int_9 = Employment
+# 1 = Working full time; 2 = Working part time; 3 = Temporarily laid off; 4 = Unemployed
+# 5 = Retired; 6 = Homemaker; 7 = Student; 8 = On disability; 9 = Volunteering 
+# 10 = Working with modified tasks; 11, On leave with pay; 12 = On leave without pay; 13 = On welfare
+
+# NEED clin_path_8 for tumor grade
+
+```
+
+```{r echo=FALSE, message=FALSE}
+data <- read_csv("data/mtl_scored_apr2023.csv") %>%
+  filter(gender %in% c("FEMALE", "MALE")) %>%
+  filter(age_y > 15) %>%
+  mutate(bl_int_6 = str_replace(bl_int_6, "\\;", ""),
+         bl_int_4 = factor(case_when(bl_int_4 == 1 ~ 1,
+                                     bl_int_4 == 2 ~ 2,
+                                     bl_int_4 == 3 | bl_int_4 == 4 | bl_int_4 == 5 | bl_int_4 == 6 | bl_int_4 == 7 | bl_int_4 == 8 ~ 3,
+                                     bl_int_4 == 9 | bl_int_4 == 10 | bl_int_4 == 11 ~ 4,
+                                     bl_int_4 == 12 | bl_int_4 == 13 ~ 5,
+                                     bl_int_4 == 14 ~ 6)),
+         education = case_when(bl_int_4 == "1" ~ "No education",
+                               bl_int_4 == "2" ~ "Primary",
+                               bl_int_4 == "3" ~ "Secondary",
+                               bl_int_4 == "4" ~ "University",
+                               bl_int_4 == "5" ~ "Grad school",
+                               bl_int_4 == "6" ~ "Other"),
+         education_num = as.numeric(bl_int_4),
+         bl_int_6 = factor(case_when(bl_int_6 == 12 ~ 1,
+                                     bl_int_6 == 3 | bl_int_6 == 4 | bl_int_6 == 8 ~ 2,
+                                     bl_int_6 == 5 | bl_int_6 == 6 | bl_int_6 == 9 |
+                                       bl_int_6 == 10 | bl_int_6 == 13 |bl_int_6 == 14 |
+                                       bl_int_6 == 15 ~ 3,
+                                     bl_int_6 == 7 ~ 4,
+                                     bl_int_6 == 1 | bl_int_6 == 11 ~ 5,
+                                     bl_int_6 == 2 | bl_int_6 > 15 ~ 6)),
+         ethnicity = case_when(bl_int_6 == "1" ~ "Caucasian/White",
+                               bl_int_6 == "2" ~ "Black/Carribbean/African",
+                               bl_int_6 == "3" ~ "Asian",
+                               bl_int_6 == "4" ~ "Hispanic",
+                               bl_int_6 == "5" ~ "Native",
+                               bl_int_6 == "6" ~ "Other/Multiple"),
+         marital = case_when(bl_int_2 == 1 ~ "Single",
+                             bl_int_2 == 2 ~ "Married/Cohabiting",
+                             bl_int_2 == 3 ~ "Separated/Divorced",
+                             bl_int_2 == 4 ~ "Widowed"),
+         bl_deceased = case_when(bl_deceased == "No" ~ "No",
+                                 bl_deceased == "Unknown" ~ "No",
+                                 bl_deceased == "Yes" ~ "Yes"),
+         tumor_location = case_when(bl_le_tessscore_sc >= 0 ~ "lower",
+                              bl_ue_tessscore_sc >= 0 ~ "upper"),
+         tumor_grade = case_when(clin_path_8 == "0" ~ 0,
+                                 clin_path_8 == "1" ~ 1,
+                                 clin_path_8 == "2" ~ 2,
+                                 clin_path_8 == "3" ~ 3,
+                                 clin_path_8 == "4" ~ 4,
+                                 clin_path_8 == "Unknown" ~ as.numeric(NA))) %>%
+  mutate(change_function = ifelse(bl_agreement_function == m12_agreement_function, "No change", "Change"),
+         change_pain = ifelse(bl_agreement_pain == m12_agreement_pain, "No change", "Change")) %>%
+  mutate(change_function_direction = case_when(bl_level_agreement_function_dummy == m12_level_agreement_function_dummy ~ "No change",
+                                               (bl_level_agreement_function_dummy == "MD higher" | bl_level_agreement_function_dummy == "MD lower") & m12_level_agreement_function_dummy == "neutral" ~ "Improved",
+                                               bl_level_agreement_function_dummy == "neutral" & (m12_level_agreement_function_dummy == "MD lower" | m12_level_agreement_function_dummy == "MD higher") ~ "Worsened"),
+         change_pain_direction = case_when(bl_level_agreement_pain_dummy == m12_level_agreement_pain_dummy ~ "No change",
+                                               (bl_level_agreement_pain_dummy == "MD higher" | bl_level_agreement_pain_dummy == "MD lower") & m12_level_agreement_pain_dummy == "neutral" ~ "Improved",
+                                               bl_level_agreement_pain_dummy == "neutral" & (m12_level_agreement_pain_dummy == "MD lower" | m12_level_agreement_pain_dummy == "MD higher") ~ "Worsened"))
+
+```
+
+## Notes
+
+-   Only cases diagnosed at age 16 or later are included (consent)
+-   clin_path_8 = tumor grade
+-   tumor type = 1 Soft tissue, 2 Bone
+-   bl_deceased = passed before surgical intervention
+
+## SAMPLE
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+data_sample <- data %>%
+  filter(!is.na(bl_assess_complete))
+
+var_sample <- c("gender", "age_y", "bl_tumour_type", "tumor_location", "tumor_grade", "marital", "education", "ethnicity", "bl_deceased", "bl_optimism", "bl_pessimism", "bl_tess", "bl_facit_score", "bl_qol_7")
+
+# Determine which variables are categorical
+cat_vars_sample <- c("gender", "bl_tumour_type", "tumor_location", "tumor_grade","marital", "education", "ethnicity", "bl_deceased")
+
+#All cases table
+table_sample <- CreateTableOne(vars = var_sample, 
+                          factorVars = cat_vars_sample,
+                          data = data_sample)
+table_sample
+```
+
+### Analyses
+
+#### Table for differences in agreement on function based on demographic and medical factors
+
+AGREEMENT on Function
+
+Stratification by: 1 = Patient and doctor agree 0 = Patient and doctor
+disagree
+
+Agreement on function was associated with tumor grade, whether or not
+patient passed before surgery (also related to tumor grade = more
+invasive cancer), with better baseline function, fatigue, QOL.
+
+```{r echo=FALSE}
+univariate <- data %>%
+  dplyr::select(subject_id, gender, 
+                procedure, tumor_location, tumor_grade,
+                area, bl_prez_5_1, bl_tess, bl_msts_extremity,
+                bl_deceased, age_y, bl_tumour_type,
+                bl_optimism, bl_pessimism,
+                bl_int_9, bl_int_11,
+                marital, education, ethnicity,
+                bl_tess, bl_facit_score, bl_qol_7,
+                bl_ioe_recover_time, bl_ioe_complication, bl_ioe_recover_difficulty,
+                bl_agreement_function, bl_agreement_pain,
+                m12_agreement_function, m12_agreement_pain,
+                change_function, change_pain) 
+
+
+# Create a list of variables to be looked at
+var_list_1 <- c("gender", "age_y", "bl_tumour_type", "tumor_location", "tumor_grade", "marital", "education", "ethnicity", "bl_deceased", "bl_optimism", "bl_pessimism", "bl_tess", "bl_facit_score", "bl_qol_7")
+
+# Determine which variables are categorical
+cat_vars_1 <- c("gender", "bl_tumour_type", "tumor_location", "tumor_grade","marital", "education", "ethnicity", "bl_deceased")
+
+#All cases table
+table_1 <- CreateTableOne(vars = var_list_1, 
+                          factorVars = cat_vars_1,
+                          data = univariate,
+                          strata = c("bl_agreement_function"))
+table_1
+```
+
+#### Table for differences in agreement on pain based on demographic and medical factors
+
+AGREEMENT on Pain
+
+Stratification by: 1 = Patient and doctor agree 0 = Patient and doctor
+disagree
+
+Agreement with doctors on pain at baseline was associated with tumor
+type, patient's optimism, higher baseline level of self-reported
+functioning, quality of life and lower fatigue.
+
+```{r echo=FALSE}
+# Create a list of variables to be looked at
+var_list_2 <- c("gender", "age_y", "bl_tumour_type", "tumor_location", "tumor_grade","marital", "education", "ethnicity", "bl_deceased", "bl_optimism", "bl_pessimism", "bl_tess", "bl_facit_score", "bl_qol_7")
+
+# Determine which variables are categorical
+cat_vars_2 <- c("gender", "bl_tumour_type", "tumor_location", "tumor_grade", "marital", "education", "ethnicity", "bl_deceased")
+
+#All cases table
+table_2 <- CreateTableOne(vars = var_list_2, 
+                          factorVars = cat_vars_2,
+                          data = univariate,
+                          strata = c("bl_agreement_pain"))
+table_2
+```
+
+### Change in function from baseline to 1 year
+
+There is a very small correlation between baseline and 1 year agreement
+on function. Dummy variable suggests that 58% see no change, but 42%
+demonstrated change in agreement on function.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+data %>%
+  dplyr::select(change_function) %>%
+  group_by(change_function) %>%
+  count() %>%
+  drop_na() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         Prop = (prop = round(n/sum,2)*100)) %>%
+  dplyr::select(-sum) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE)
+
+ggscatter(data, x = "bl_level_agreement_function", y = "m12_level_agreement_function",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + 
+  stat_cor(method = "spearman", 
+           label.x = 2, label.y = 4,
+           p.accuracy = 0.001, r.accuracy = 0.01) +
+  geom_jitter()
+```
+
+## Variables associated with change on function over time
+
+No demographic or medical variables was associated with change in
+agreement on function.
+
+```{r echo=FALSE}
+# var_list_3 <- c("gender", "age_y", "bl_tumour_type", "tumor_location", "clin_path_8", "marital", "education", "ethnicity", "bl_deceased", "bl_optimism", "bl_pessimism", "bl_tess", "bl_facit_score", "bl_qol_7")
+# 
+# # Determine which variables are categorical
+# cat_vars_3 <- c("gender", "bl_tumour_type", "tumor_location", "clin_path_8","marital", "education", "ethnicity", "bl_deceased")
+# 
+# #All cases table
+# table_3 <- CreateTableOne(vars = var_list_3, 
+#                           factorVars = cat_vars_3,
+#                           data = univariate,
+#                           strata = c("change_function"))
+# table_3
+```
+
+### Change in pain from baseline to 1 year
+
+There is literally no correlation between baseline and 1 year agreement
+suggesting that some people agree more and others disagree more. Dummy
+variably suggests that 55% see no change, but 45% demonstrated change in
+agreement on pain.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+data %>%
+  dplyr::select(change_pain) %>%
+  group_by(change_pain) %>%
+  count() %>%
+  drop_na() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         Prop = (prop = round(n/sum,2)*100)) %>%
+  dplyr::select(-sum) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE)
+
+ggscatter(data, x = "bl_level_agreement_pain", y = "m12_level_agreement_pain",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) + 
+  stat_cor(method = "spearman", 
+           label.x = 2, label.y = 4,
+           p.accuracy = 0.001, r.accuracy = 0.01) +
+  geom_jitter()
+```
+
+## Variables associated with change on pain over time
+
+No demographic variables were associated with change in agreement on
+pain.
+
+```{r echo= FALSE}
+# var_list_4 <- c("gender", "age_y", "bl_tumour_type", "tumor_location", "clin_path_8", "marital", "education", "ethnicity", "bl_deceased", "bl_optimism", "bl_pessimism", "bl_tess", "bl_facit_score", "bl_qol_7")
+# 
+# # Determine which variables are categorical
+# cat_vars_4 <- c("gender", "bl_tumour_type", "tumor_location", "clin_path_8","marital", "education", "ethnicity", "bl_deceased")
+# 
+# #All cases table
+# table_4 <- CreateTableOne(vars = var_list_4, 
+#                           factorVars = cat_vars_4,
+#                           data = univariate,
+#                           strata = c("change_pain"))
+# table_4
+```
+
+## Outcomes over time based on agreement on function
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=11}
+data_over_time <- data %>%
+  dplyr::select(subject_id, age_y, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_level_agreement_pain_dummy, bl_level_agreement_function_dummy, bl_tess, m12_tess, bl_qol_7, m12_qol_7, bl_facit_score, m12_facit_score) %>%
+  drop_na(bl_agreement_function) %>%
+  pivot_longer(cols = c(bl_tess, m12_tess, bl_qol_7, m12_qol_7, bl_facit_score, m12_facit_score),
+               names_to = c("time", "measure"),
+               names_sep = "_",
+               values_to = "score")
+# data_over_time %>% 
+#   ggplot(aes(x = time, y = score)) +
+#   geom_boxplot(aes(fill = factor(bl_level_agreement_function))) +
+#   facet_grid(~measure)
+
+data_over_time %>%
+  ggplot(aes(x = time, y = score)) +
+  geom_boxplot(aes(fill = factor(bl_level_agreement_function_dummy))) +
+  facet_grid(~measure)
+```
+
+## Outcomes over time based on agreement on pain
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.width=11}
+data_over_time <- data %>%
+  dplyr::select(subject_id, age_y, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_level_agreement_function_dummy, bl_level_agreement_pain_dummy, bl_tess, m12_tess, bl_qol_7, m12_qol_7, bl_facit_score, m12_facit_score) %>%
+  drop_na(bl_agreement_function) %>%
+  pivot_longer(cols = c(bl_tess, m12_tess, bl_qol_7, m12_qol_7, bl_facit_score, m12_facit_score),
+               names_to = c("time", "measure"),
+               names_sep = "_",
+               values_to = "score")
+# data_over_time %>% 
+#   drop_na(bl_level_agreement_pain) %>%
+#   ggplot(aes(x = time, y = score)) +
+#   geom_boxplot(aes(fill = factor(bl_level_agreement_pain))) +
+#   facet_grid(~measure)
+
+data_over_time %>% 
+  drop_na(bl_level_agreement_pain_dummy) %>%
+  ggplot(aes(x = time, y = score)) +
+  geom_boxplot(aes(fill = factor(bl_level_agreement_pain_dummy))) +
+  facet_grid(~measure)
+```
+
+## Change in agreement on function and relationship to main outcomes
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+var_list_change <- c("m12_tess", "m12_qol_7", "m12_facit_score")
+
+#All cases table
+table_change_function <- CreateTableOne(vars = var_list_change, 
+                               data = data,
+                               strata = c("change_function"))
+table_change_function
+```
+
+## Change in agreement on pain and relationship to main outcomes
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#All cases table
+table_change_pain <- CreateTableOne(vars = var_list_change, 
+                               data = data,
+                               strata = c("change_pain"))
+table_change_pain
+```
+
+# Demographic factors and correlations to the main outcomes
+
+Self-reported function at 12 months was associated with age, education,
+being widowed, tumor grade.
+
+Self-reported quality of life at 12 months was associated with education
+level.
+
+Fatigue at 12 months was associated with education and tumor grade.
+
+```{r echo=FALSE, message=FALSE, results=FALSE}
+m_tess_gender <- lm(m12_tess ~ gender, data = data)
+summary(m_tess_gender) #no
+
+m_tess_age <- lm(m12_tess ~ age_y, data = data)
+summary(m_tess_age) #yes
+
+m_tess_marital <- lm(m12_tess ~ marital, data = data)
+summary(m_tess_marital) #widowed
+
+m_tess_education <- lm(m12_tess ~ education_num, data = data)
+summary(m_tess_education) # yes lower education
+
+m_tess_ethnicity <- lm(m12_tess ~ ethnicity, data = data)
+summary(m_tess_ethnicity) #NO
+
+m_tess_tumor <- lm(m12_tess ~ bl_tumour_type, data = data)
+summary(m_tess_tumor) #yes for the 2 types (n=3)
+
+m_tess_grade <- lm(m12_tess ~ tumor_grade, data = data)
+summary(m_tess_grade) #yes
+
+###
+m_qol_gender <- lm(m12_qol_7 ~ gender, data = data)
+summary(m_qol_gender) #no
+
+m_qol_age <- lm(m12_qol_7 ~ age_y, data = data)
+summary(m_qol_age) #no
+
+m_qol_marital <- lm(m12_qol_7 ~ marital, data = data)
+summary(m_qol_marital) #no
+
+m_qol_education <- lm(m12_qol_7 ~ education, data = data)
+summary(m_qol_education) # yes lower education, minimum
+
+m_qol_ethnicity <- lm(m12_qol_7 ~ ethnicity, data = data)
+summary(m_qol_ethnicity) #NO
+
+m_qol_tumor <- lm(m12_qol_7 ~ bl_tumour_type, data = data)
+summary(m_qol_tumor) #no
+
+m_qol_grade <- lm(m12_qol_7 ~ tumor_grade, data = data)
+summary(m_qol_grade) #yes
+
+###
+m_facit_gender <- lm(m12_facit_score ~ gender, data = data)
+summary(m_facit_gender) #no
+
+m_facit_age <- lm(m12_facit_score ~ age_y, data = data)
+summary(m_facit_age) #no
+
+m_facit_marital <- lm(m12_facit_score ~ marital, data = data)
+summary(m_facit_marital) #no
+
+m_facit_education <- lm(m12_facit_score ~ education, data = data)
+summary(m_facit_education) # yes lower education, minimum
+
+m_facit_ethnicity <- lm(m12_facit_score ~ ethnicity, data = data)
+summary(m_facit_ethnicity) #NO
+
+m_facit_tumor <- lm(m12_facit_score ~ bl_tumour_type, data = data)
+summary(m_facit_tumor) #no
+
+m_facit_grade <- lm(m12_facit_score ~ tumor_grade, data = data)
+summary(m_facit_grade) #yes
+```
+
+## UNIVARIATE: OUTCOME = TESS (Self-reported function)
+
+Notes: cases that passed before the intervention removed (N \~ 107)
+
+### based on agreement on function
+
+```{r echo=FALSE, fig.width=8}
+data_mixed_change_tess <- data %>%
+  filter(bl_deceased != "Yes") %>%
+  dplyr::select(subject_id, gender, age_y, education_num, marital, tumor_grade, change_function_direction, change_pain_direction, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_level_agreement_function_dummy, bl_level_agreement_pain_dummy, 
+                bl_tess, m12_tess) %>%
+  pivot_longer(cols = c(bl_tess, m12_tess),
+               names_to = "time",
+               values_to = "score") %>%
+  mutate(subject_id = as.numeric(subject_id),
+         time = as.factor(time),
+         bl_level_agreement_function_dummy = as.factor(bl_level_agreement_function_dummy),
+         bl_level_agreement_pain_dummy = as.factor(bl_level_agreement_pain_dummy),
+         bl_agreement_function = as.factor(case_when(bl_agreement_function == 0 ~ "disagree", 
+                                                     bl_agreement_function == 1 ~ "agree")),
+         bl_agreement_pain = as.factor(case_when(bl_agreement_pain == 0 ~ "disagree",
+                                                 bl_agreement_pain == 1 ~ "agree")))
+    
+# write_csv(data_mixed_change_tess, "~/Desktop/data_mixed_change_tess.csv")
+
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_level_agreement_function_dummy + time:bl_level_agreement_function_dummy+( 1 | subject_id ),
+    data = data_mixed_change_tess,
+    plotHAxis = time,
+    plotSepLines = bl_level_agreement_function_dummy,
+    plotError = "ci")
+```
+
+### based on agreement on pain
+
+```{r echo=FALSE, fig.width=8}
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_level_agreement_pain_dummy + time:bl_level_agreement_pain_dummy+( 1 | subject_id ),
+    data = data_mixed_change_tess,
+    plotHAxis = time,
+    plotSepLines = bl_level_agreement_pain_dummy,
+    plotError = "ci")
+```
+
+## UNIVARIATE: OUTCOME = Quality of Life (VAS scale)
+
+### based on agreement on function
+
+```{r echo=FALSE, fig.width=8}
+data_mixed_change_qol <- data %>%
+  filter(bl_deceased != "Yes") %>%
+  dplyr::select(subject_id, gender, age_y, education_num, marital, tumor_grade, change_function_direction, change_pain_direction, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_level_agreement_function_dummy, bl_level_agreement_pain_dummy,  
+                bl_qol_7, m12_qol_7) %>%
+  pivot_longer(cols = c(bl_qol_7, m12_qol_7),
+               names_to = "time",
+               values_to = "score") %>%
+  mutate(subject_id = as.numeric(subject_id),
+         time = as.factor(time),
+         bl_level_agreement_function_dummy = as.factor(bl_level_agreement_function_dummy),
+         bl_level_agreement_pain_dummy = as.factor(bl_level_agreement_pain_dummy),
+         bl_agreement_function = as.factor(case_when(bl_agreement_function == 0 ~ "disagree", 
+                                                     bl_agreement_function == 1 ~ "agree")),
+         bl_agreement_pain = as.factor(case_when(bl_agreement_pain == 0 ~ "disagree",
+                                                 bl_agreement_pain == 1 ~ "agree")))
+    
+
+# write_csv(data_mixed_change_qol, "~/Desktop/data_mixed_change_qol.csv")
+
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_level_agreement_function_dummy + time:bl_level_agreement_function_dummy + ( 1 | subject_id ),
+    data = data_mixed_change_qol,
+    plotHAxis = time,
+    plotSepLines = bl_level_agreement_function_dummy,
+    plotError = "ci")
+```
+
+### based on agreement on pain
+
+```{r echo=FALSE, fig.width=8}
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_level_agreement_pain_dummy + time:bl_level_agreement_pain_dummy+( 1 | subject_id ),
+    data = data_mixed_change_qol,
+    plotHAxis = time,
+    plotSepLines = bl_level_agreement_pain_dummy,
+    plotError = "ci")
+```
+
+## UNIVARIATE: OUTCOME = FATIGUE (FACIT)
+
+### based on agreement on function
+
+```{r echo=FALSE, fig.width=8}
+data_mixed_change_facit <- data %>%
+  filter(bl_deceased != "Yes") %>%
+  dplyr::select(subject_id, gender, age_y, education_num, marital, tumor_grade, change_function_direction, change_pain_direction, bl_level_agreement_pain, bl_level_agreement_function, bl_agreement_function, bl_agreement_pain, bl_level_agreement_function_dummy, bl_level_agreement_pain_dummy, 
+                bl_facit_score, m12_facit_score) %>%
+  pivot_longer(cols = c(bl_facit_score, m12_facit_score),
+               names_to = "time",
+               values_to = "score") %>%
+  mutate(subject_id = as.numeric(subject_id),
+         time = as.factor(time),
+         bl_level_agreement_function_dummy = as.factor(bl_level_agreement_function_dummy),
+         bl_level_agreement_pain_dummy = as.factor(bl_level_agreement_pain_dummy),
+         bl_agreement_function = as.factor(case_when(bl_agreement_function == 0 ~ "disagree", 
+                                                     bl_agreement_function == 1 ~ "agree")),
+         bl_agreement_pain = as.factor(case_when(bl_agreement_pain == 0 ~ "disagree",
+                                                 bl_agreement_pain == 1 ~ "agree")))
+    
+# write_csv(data_mixed_change_facit, "~/Desktop/data_mixed_change_facit.csv")
+
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_level_agreement_function_dummy + time:bl_level_agreement_function_dummy+( 1 | subject_id ),
+    data = data_mixed_change_facit,
+    plotHAxis = time,
+    plotSepLines = bl_level_agreement_function_dummy,
+    plotError = "ci")
+```
+
+### based on agreement on pain
+
+```{r echo=FALSE, fig.width=8}
+gamlj::gamljMixed(
+    formula = score ~ 1 + time + bl_level_agreement_pain_dummy + time:bl_level_agreement_pain_dummy+( 1 | subject_id ),
+    data = data_mixed_change_facit,
+    plotHAxis = time,
+    plotSepLines = bl_level_agreement_pain_dummy,
+    plotError = "ci")
+```
+
+
+## Post meeting analysis - change over time
+
+Univariate models indicate that the change in function was associated with TESS and fatigue at 12months.
+
+```{r, echo=FALSE, results=FALSE}
+data %>%
+  group_by(change_function_direction) %>%
+  count() %>%
+  drop_na()
+
+data %>%
+  group_by(change_pain_direction) %>%
+  count() %>%
+  drop_na()
+
+m_tess_change_function <- lm(m12_tess ~ change_function_direction, data = data)
+summary(m_tess_change_function) # YES
+
+m_tess_change_pain <- lm(m12_tess ~ change_pain_direction, data = data)
+summary(m_tess_change_pain) # NO
+###
+m_qol_change_function <- lm(m12_qol_7 ~ change_function_direction, data = data)
+summary(m_qol_change_function) # NO
+
+m_qol_change_pain <- lm(m12_qol_7 ~ change_pain_direction, data = data)
+summary(m_qol_change_pain) # NO
+###
+m_facit_change_function <- lm(m12_facit_score ~ change_function_direction, data = data)
+summary(m_facit_change_function) # YES
+
+m_facit_change_pain <- lm(m12_facit_score ~ change_pain_direction, data = data)
+summary(m_facit_change_pain) # NO
+
+
+multinomial <- data %>%
+  dplyr::select(subject_id,change_pain_direction, change_function_direction, gender, age_y, education_num, marital, tumor_grade, ethnicity)
+
+# write_csv(multinomial, "~/Desktop/multinomial.csv")
+
+data %>%
+  dplyr::select(change_function_direction) %>%
+  group_by(change_function_direction) %>%
+  count() %>%
+  drop_na() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         Prop = (prop = round(n/sum,2)*100)) %>%
+  dplyr::select(-sum) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE)
+
+data %>%
+  dplyr::select(change_pain_direction) %>%
+  group_by(change_pain_direction) %>%
+  count() %>%
+  drop_na() %>%
+  ungroup() %>%
+  mutate(sum = sum(n),
+         Prop = (prop = round(n/sum,2)*100)) %>%
+  dplyr::select(-sum) %>%
+  kable() %>%
+  kable_styling(full_width = FALSE)
+```
+
